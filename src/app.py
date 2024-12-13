@@ -1,9 +1,10 @@
 import copy
-import Levenshtein
-
+from collections import defaultdict
 from dataclasses import dataclass
 from enum import Enum
-from collections import defaultdict
+
+import Levenshtein
+
 
 class DistanceType(Enum):
     NORMAL = 0
@@ -13,16 +14,22 @@ class DistanceType(Enum):
     def __repr__(self) -> str:
         return f"{self.__class__.__name__}.{self.name}"
 
+
 @dataclass
 class Query:
     id: int
-    dist_type: DistanceType # should be enum
+    dist_type: DistanceType  # should be enum
     keywords: list[str]
     tolerance: int = None
 
     def __repr__(self) -> str:
         class_name = self.__class__.__name__
-        return f"Class {class_name} with attributes, query_id: {self.id}, dist_type: {self.dist_type}, keywords: {self.keywords}, tolerance: {self.tolerance}"
+        return (
+            f"Class {class_name} with attributes, query_id: {self.id},"
+            f"dist_type: {self.dist_type}, keywords: {self.keywords},"
+            f"tolerance: {self.tolerance}"
+        )
+
 
 @dataclass
 class Document:
@@ -30,19 +37,23 @@ class Document:
     num_results: int
     query_ids: list[int]
 
+
 class DocumentCollection:
     docs = defaultdict(Document)
 
-    @staticmethod 
+    @staticmethod
     def add_document(doc_id: int, document: Document):
         DocumentCollection.docs[doc_id] = document
+
     @staticmethod
     def get_doc_results(doc_id: int):
         return DocumentCollection.docs[doc_id]
+
     @staticmethod
     def remove_doc(doc_id: int):
         if doc_id in DocumentCollection.docs:
             del DocumentCollection.docs[doc_id]
+
 
 class QueryManager:
     active_queries = defaultdict(Query)
@@ -62,22 +73,33 @@ class QueryManager:
 
 
 def calc_normal(query_word: str, doc_word: str, _):
-    return query_word==doc_word
+    return query_word == doc_word
+
+
 def calc_hamming(query_word: str, doc_word: str, tolerance: int = None):
     if len(query_word) == len(doc_word):
-        return sum(c1!=c2 for c1, c2 in zip(query_word, doc_word)) <= tolerance      
+        return (
+            sum(c1 != c2 for c1, c2 in zip(query_word, doc_word)) <= tolerance
+        )
     else:
         return False
+
+
 def calc_third(query_word: str, doc_word: str, tolerance: int = None):
     return Levenshtein.distance(query_word, doc_word) <= tolerance
 
 
-def CalcMatch(match_type: DistanceType, query_words: list[str], doc_word: str, tolerance: int = None) -> bool:
+def CalcMatch(
+    match_type: DistanceType,
+    query_words: list[str],
+    doc_word: str,
+    tolerance: int = None,
+) -> bool:
     if query_words:
         calc_match = {
             DistanceType.NORMAL: calc_normal,
             DistanceType.HAMMING: calc_hamming,
-            DistanceType.THIRD: calc_third
+            DistanceType.THIRD: calc_third,
         }
         words_to_remove = []
         for query_word in query_words:
@@ -85,20 +107,32 @@ def CalcMatch(match_type: DistanceType, query_words: list[str], doc_word: str, t
                 words_to_remove.append(query_word)
                 # query_words.remove(query_word)
         [query_words.remove(word) for word in words_to_remove]
-        
+
     else:
-        raise ValueError("query_words list should not be empty when calculating distance")
+        raise ValueError(
+            "query_words list should not be empty when calculating distance"
+        )
 
 
 def get_queries():
     return QueryManager.get_active_queries()
-def StartQuery(id: int, dist_type: int, words: list[str], tolerance: int = None) -> None:
+
+
+def StartQuery(
+    id: int, dist_type: int, words: list[str], tolerance: int = None
+) -> None:
     if not words:
-        raise ValueError(f"empty word list for query id {id}, words are {words}")
-    QueryManager.add_query(id, Query(id, DistanceType(dist_type), words, tolerance))
+        raise ValueError(
+            f"empty word list for query id {id}, words are {words}"
+        )
+    QueryManager.add_query(
+        id, Query(id, DistanceType(dist_type), words, tolerance)
+    )
+
 
 def EndQuery(id: int):
     QueryManager.remove_query(id)
+
 
 def MatchDocument(id: int, doc_words: list[str]):
     queries = copy.deepcopy(QueryManager.get_active_queries())
@@ -109,7 +143,10 @@ def MatchDocument(id: int, doc_words: list[str]):
             if not query.keywords:
                 res_queries.append(q_id)
                 break
-    DocumentCollection.add_document(id, Document(id, len(res_queries), sorted(res_queries)))
+    DocumentCollection.add_document(
+        id, Document(id, len(res_queries), sorted(res_queries))
+    )
+
 
 def GenNextAvailableRes(res_id: int):
     results = copy.deepcopy(DocumentCollection.get_doc_results(res_id))
