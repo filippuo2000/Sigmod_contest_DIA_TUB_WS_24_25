@@ -167,9 +167,25 @@ def StartQuery(
 def EndQuery(id: int):
     QueryManager.remove_query(id)
 
-def MatchDocument(id: int, doc_words: set[str], doc_trie: Trie):
+
+def MatchDocument(id: int, doc_words: set[str]):
     queries = copy.deepcopy(QueryManager.get_active_queries())
+    lev_queries = copy.deepcopy(QueryManager.get_active_lev_queries())
     res_queries = []
+    doc_trie = Trie()
+    for word in doc_words:
+        # active_queries = copy.deepcopy(lev_queries)
+        new_res = []
+        for q_id, query in lev_queries.items():
+            CalcMatch(query.dist_type, query.keywords, word, query.tolerance)
+            if not query.keywords:
+                new_res.append(q_id)
+                # del lev_queries[q_id]
+
+        res_queries.extend(new_res)
+        for res in new_res:
+            del lev_queries[res]
+        doc_trie.insert(word)
 
     for q_id, query in queries.items():
         if query.dist_type == DistanceType.NORMAL or query.dist_type == DistanceType.HAMMING:
@@ -178,15 +194,30 @@ def MatchDocument(id: int, doc_words: set[str], doc_trie: Trie):
                 res_queries.append(q_id)  
                 continue  
         
-        else:      
-            for word in doc_words:
-                CalcMatch(query.dist_type, query.keywords, word, query.tolerance)
-                if not query.keywords:
-                    res_queries.append(q_id)
-                    break
     DocumentCollection.add_document(
         id, Document(id, len(res_queries), sorted(res_queries))
     )
+
+# def MatchDocument(id: int, doc_words: set[str], doc_trie: Trie):
+#     queries = copy.deepcopy(QueryManager.get_active_queries())
+#     res_queries = []
+
+#     for q_id, query in queries.items():
+#         if query.dist_type == DistanceType.NORMAL or query.dist_type == DistanceType.HAMMING:
+#             CalcMatch(query.dist_type, query.keywords, doc_trie, query.tolerance)
+#             if not query.keywords:
+#                 res_queries.append(q_id)  
+#                 continue  
+        
+#         else:      
+#             for word in doc_words:
+#                 CalcMatch(query.dist_type, query.keywords, word, query.tolerance)
+#                 if not query.keywords:
+#                     res_queries.append(q_id)
+#                     break
+#     DocumentCollection.add_document(
+#         id, Document(id, len(res_queries), sorted(res_queries))
+#     )
 
 
 def GenNextAvailableRes(res_id: int):
