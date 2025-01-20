@@ -2,6 +2,7 @@ import copy
 from collections import defaultdict
 from dataclasses import dataclass
 from enum import Enum
+from src.trie import Trie
 
 import Levenshtein
 
@@ -54,35 +55,64 @@ class DocumentCollection:
         if doc_id in DocumentCollection.docs:
             del DocumentCollection.docs[doc_id]
 
+    @staticmethod
+    def get_num_res():
+        return len(DocumentCollection.docs)
+    
+    @staticmethod
+    def reset_collection():
+        DocumentCollection.docs = defaultdict(Document)
 
 class QueryManager:
     active_queries = defaultdict(Query)
+    active_lev_queries = defaultdict(Query)
 
     @staticmethod
     def add_query(query_id: int, query_object: Query):
         QueryManager.active_queries[query_id] = query_object
 
     @staticmethod
+    def add_lev_query(query_id: int, query_object: Query):
+        QueryManager.active_lev_queries[query_id] = query_object
+
+    @staticmethod
     def remove_query(query_id):
         if query_id in QueryManager.active_queries:
             del QueryManager.active_queries[query_id]
-
+        elif query_id in QueryManager.active_lev_queries:
+            del QueryManager.active_lev_queries[query_id]
+          
     @staticmethod
     def get_active_queries():
         return QueryManager.active_queries
+    
+    @staticmethod
+    def get_active_lev_queries():
+        return QueryManager.active_lev_queries
 
 
-def calc_normal(query_word: str, doc_word: str, _):
-    return query_word == doc_word
+# def calc_normal(query_word: str, doc_word: str, _):
+#     return query_word == doc_word
 
+# def calc_normal(query_word: str, doc_words: set[str], _):
+#     return query_word in doc_words
 
-def calc_hamming(query_word: str, doc_word: str, tolerance: int = None):
-    if len(query_word) == len(doc_word):
-        return (
-            sum(c1 != c2 for c1, c2 in zip(query_word, doc_word)) <= tolerance
-        )
-    else:
-        return False
+def calc_normal(query_word: str, doc_trie: Trie, _):
+    return doc_trie.search(query_word)
+
+# def calc_hamming(query_word: str, doc_trie: str, tolerance_: int = None):
+#     return doc_trie.search_hamming(query_word, tolerance=tolerance_, curr_node=doc_trie.root, curr_score=0, char_abs_idx=1)
+
+def calc_hamming(query_word: str, doc_trie: str, tolerance_: int = None):
+    return doc_trie.search_hamming(query_word, tolerance_, doc_trie.root)
+    
+# def calc_hamming(query_word: str, doc_word: str, tolerance: int = None):
+#     if len(query_word) == len(doc_word):
+#         return (
+#             sum(c1 != c2 for c1, c2 in zip(query_word, doc_word)) <= tolerance
+#         )
+#     else:
+#         return False
 
 
 def calc_third(query_word: str, doc_word: str, tolerance: int = None):
@@ -125,31 +155,50 @@ def StartQuery(
         raise ValueError(
             f"empty word list for query id {id}, words are {words}"
         )
-    QueryManager.add_query(
-        id, Query(id, DistanceType(dist_type), words, tolerance)
-    )
+    if dist_type == 2:
+        QueryManager.add_lev_query(
+            id, Query(id, DistanceType(dist_type), words, tolerance))
+    if dist_type==1 or dist_type==0:
+        QueryManager.add_query(
+            id, Query(id, DistanceType(dist_type), words, tolerance)
+        )
 
 
 def EndQuery(id: int):
     QueryManager.remove_query(id)
 
-
-def MatchDocument(id: int, doc_words: list[str]):
+def MatchDocument(id: int, doc_words: set[str], doc_trie: Trie):
     queries = copy.deepcopy(QueryManager.get_active_queries())
     res_queries = []
+
     for q_id, query in queries.items():
-        for word in doc_words:
-            CalcMatch(query.dist_type, query.keywords, word, query.tolerance)
+        if query.dist_type == DistanceType.NORMAL or query.dist_type == DistanceType.HAMMING:
+            CalcMatch(query.dist_type, query.keywords, doc_trie, query.tolerance)
             if not query.keywords:
-                res_queries.append(q_id)
-                break
+                res_queries.append(q_id)  
+                continue  
+        
+        else:      
+            for word in doc_words:
+                CalcMatch(query.dist_type, query.keywords, word, query.tolerance)
+                if not query.keywords:
+                    res_queries.append(q_id)
+                    break
     DocumentCollection.add_document(
         id, Document(id, len(res_queries), sorted(res_queries))
     )
 
 
 def GenNextAvailableRes(res_id: int):
-    results = copy.deepcopy(DocumentCollection.get_doc_results(res_id))
+    # results = copy.deepcopy(DocumentCollection.get_doc_results(res_id))
+    results = DocumentCollection.get_doc_results(res_id)
     assert results.id == res_id
     DocumentCollection.remove_doc(res_id)
+    # print(f"after removal, num results: {results.num_results}, queries: {results.query_ids}")
     return results.num_results, results.query_ids
+
+def get_num_results():
+    return DocumentCollection.get_num_res()
+
+def reset_collection():
+    return DocumentCollection.reset_collection()

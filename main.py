@@ -1,20 +1,72 @@
 import re
 import time
+import os
 
+from concurrent.futures import ProcessPoolExecutor
 from collections import defaultdict
+from multiprocessing import Pool
+from src.trie import Trie
 from src.app import (
     StartQuery,
     EndQuery,
     MatchDocument,
     GenNextAvailableRes,
+    get_num_results,
+    reset_collection
 )
 
+def process_chunk(chunk):
+    for id, res in chunk:
+        error_flag = False
+        num_results, query_ids = GenNextAvailableRes(id)
+
+        if num_results != len(res):
+            error_flag = True
+
+        if query_ids != res:
+            error_flag = True
+
+        if error_flag:
+            raise ValueError(
+                f"Results for document id {id} do not match,\n \
+                                Num of true results: {len(res)}\n \
+                                Num of predicted results is: {num_results}\n \
+                                True results are: {res}\n \
+                                Predicted results are: {query_ids}"
+            )
+def process_id(id_res_pair):
+    id, res = id_res_pair
+    error_flag = False
+    num_results, query_ids = GenNextAvailableRes(id)
+
+    if num_results != len(res):
+        error_flag = True
+
+    if query_ids != res:
+        error_flag = True
+
+    if error_flag:
+        raise ValueError(
+            f"Results for document id {id} do not match,\n \
+                            Num of true results: {len(res)}\n \
+                            Num of predicted results is: {num_results}\n \
+                            True results are: {res}\n \
+                            Predicted results are: {query_ids}"
+        )
+                
+def split_res(res, num_splits):
+    idxs = len(res) // num_splits 
+    for idx in range(0, len(res), idxs):
+        yield res[idx:idx+idxs]
 
 def main():
-    with open("/Users/Filip/Downloads/tub_24/DIA/small_test.txt") as f:
+    orig_file = "/Users/Filip/Downloads/tub_24/DIA/small_test.txt"
+    debug_file = "/Users/Filip/Downloads/tub_24/DIA_my_impl/debug.txt"
+    with open("/Users/Filip/Downloads/big_test.txt") as f:
         # with open("/Users/Filip/Downloads/testt.txt") as f:
         num_cur_results: int = 0
         cur_results = defaultdict(list)
+
         while 1:
             try:
                 line = next(f)
@@ -22,6 +74,11 @@ def main():
 
                 if ch == 's' and num_cur_results > 0:
                     # iterating over different documents and their corresponding results
+                    # print(f"num results before comparison: {get_num_results()}")
+                    # with ProcessPoolExecutor(max_workers=os.cpu_count()) as executor:
+                    #     executor.map(priocess_chunk, chunks)
+                    # with Pool(processes=os.cpu_count()) as pool:
+                    #     pool.map(process_id, list(cur_results.items()))
                     for id, res in cur_results.items():
                         error_flag = False
                         num_results, query_ids = GenNextAvailableRes(id)
@@ -38,8 +95,11 @@ def main():
                                                 Num of true results: {len(res)}\n \
                                                 Num of predicted results is: {num_results}\n \
                                                 True results are: {res}\n \
-                                                Predicted results are: {query_ids}"
+                                                Predicted results are: {query_ids} \n \
+                                                Difference: {[item for item in res if item not in query_ids]}"
                             )
+                    # reset_collection()
+                    # print(f"num results after comparison: {get_num_results()}")
                     num_cur_results = 0
                     cur_results.clear()
 
@@ -57,7 +117,9 @@ def main():
                     # print(get_queries())
                     n = re.findall(r"\d{1,}", line)
                     doc_id, num_words = int(n[0]), int(n[1])
-                    words = line.split()[3:]
+                    words = set(line.split()[3:])
+                    # trie = Trie()
+                    # trie.build_trie(words)
                     MatchDocument(doc_id, words)
                     # print("doc id: ", doc_id, "num of words: ", num_words)
 
@@ -77,7 +139,7 @@ def main():
 
                 if ch is None:
                     raise ValueError(
-                        f"char value {ch} is not expexted at the beginning of the line"
+                        f"char value {ch} is not expected at the beginning of the line"
                     )
 
             except StopIteration:
