@@ -198,6 +198,7 @@ def MatchDocument(id: int, doc_words: set[str]):
         id, Document(id, len(res_queries), sorted(res_queries))
     )
 
+
 # def MatchDocument(id: int, doc_words: set[str], doc_trie: Trie):
 #     queries = copy.deepcopy(QueryManager.get_active_queries())
 #     res_queries = []
