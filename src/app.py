@@ -71,10 +71,8 @@ class QueryManager:
     def get_active_queries():
         return QueryManager.active_queries
 
-
-def calc_normal(query_word: str, doc_word: str, _):
-    return query_word == doc_word
-
+def calc_normal(query_word: str, doc_words: str, _):
+    return query_word in doc_words
 
 def calc_hamming(query_word: str, doc_word: str, tolerance: int = None):
     if len(query_word) == len(doc_word):
@@ -138,11 +136,17 @@ def MatchDocument(id: int, doc_words: list[str]):
     queries = copy.deepcopy(QueryManager.get_active_queries())
     res_queries = []
     for q_id, query in queries.items():
-        for word in doc_words:
-            CalcMatch(query.dist_type, query.keywords, word, query.tolerance)
+        if query.dist_type == DistanceType.NORMAL:
+            CalcMatch(query.dist_type, query.keywords, doc_words, query.tolerance)
             if not query.keywords:
-                res_queries.append(q_id)
-                break
+                res_queries.append(q_id)  
+                continue  
+        else:
+            for word in doc_words:
+                CalcMatch(query.dist_type, query.keywords, word, query.tolerance)
+                if not query.keywords:
+                    res_queries.append(q_id)
+                    break
     DocumentCollection.add_document(
         id, Document(id, len(res_queries), sorted(res_queries))
     )

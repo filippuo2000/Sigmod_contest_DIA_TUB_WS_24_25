@@ -57,7 +57,7 @@ def main():
                     # print(get_queries())
                     n = re.findall(r"\d{1,}", line)
                     doc_id, num_words = int(n[0]), int(n[1])
-                    words = line.split()[3:]
+                    words = set(line.split()[3:])
                     MatchDocument(doc_id, words)
                     # print("doc id: ", doc_id, "num of words: ", num_words)
 
