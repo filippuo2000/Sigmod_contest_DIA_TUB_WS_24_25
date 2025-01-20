@@ -14,7 +14,8 @@ def main():
     with open("/Users/Filip/Downloads/tub_24/DIA/small_test.txt") as f:
         # with open("/Users/Filip/Downloads/testt.txt") as f:
         num_cur_results: int = 0
-        cur_results = defaultdict(list)
+        # cur_results = defaultdict(list)
+        cur_results = {}
         while 1:
             try:
                 line = next(f)
@@ -58,6 +59,8 @@ def main():
                     n = re.findall(r"\d{1,}", line)
                     doc_id, num_words = int(n[0]), int(n[1])
                     words = set(line.split()[3:])
+                    # if doc_id == 198:
+                    #     print(len(words))
                     MatchDocument(doc_id, words)
                     # print("doc id: ", doc_id, "num of words: ", num_words)
 
