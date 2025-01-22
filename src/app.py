@@ -5,9 +5,9 @@ from enum import Enum
 from functools import lru_cache, cache
 from typing import Set, List, Tuple
 from conditional_cache import lru_cache
+from src.trie import Trie
 
 import Levenshtein
-
 
 class DistanceType(Enum):
     NORMAL = 0
@@ -70,6 +70,10 @@ class Subscriber(Query):
             ResultCollector.add_result(self.id)
             # self.num_words_to_satisfy = len(self.keywords)
         return None
+    
+    def reset_counter(self):
+        self.num_words_to_satisfy: int = len(self.keywords)
+
 
 
 class Topic:
@@ -97,6 +101,9 @@ class Topic:
             #     print("I am here")
             subscriber.word_satisfied()
         # self.status = False
+    def reset_subscribers(self):
+        for _, subscriber in self.subscribers.items():
+            subscriber.reset_counter()
 
     def __repr__(self) -> str:
         class_name = self.__class__.__name__
@@ -140,7 +147,7 @@ class TopicManager:
 
     @staticmethod
     def add_topic(topic_id: Tuple, word: str, subscriber: Subscriber):
-        if topic_id in TopicManager.active_topics.keys():
+        if topic_id in TopicManager.active_topics:
             # add a subscriber to an existing topic
             TopicManager.active_topics[topic_id].subscribers[subscriber.id] = subscriber
         else:
@@ -148,7 +155,7 @@ class TopicManager:
 
     @staticmethod
     def remove_subscriber(topic_id: Tuple, sub_id: int):
-        if topic_id in TopicManager.active_topics.keys():
+        if topic_id in TopicManager.active_topics:
             del TopicManager.active_topics[topic_id].subscribers[sub_id]
             if not TopicManager.active_topics[topic_id].subscribers:
                 TopicManager.remove_topic(topic_id)
@@ -178,8 +185,11 @@ class ResultCollector:
     def reset_results():
         ResultCollector.curr_results = []
 
-def calc_normal(query_word: str, doc_word: str, _):
-    return query_word == doc_word
+# def calc_normal(query_word: str, doc_word: str, _):
+#     return query_word == doc_word
+        
+def calc_normal(topic_word: str, doc_trie: str, _):
+    return doc_trie.search(topic_word)
 
 def calc_hamming(query_word: str, doc_word: str, tolerance: int = None):
     if len(query_word) == len(doc_word):
@@ -188,11 +198,10 @@ def calc_hamming(query_word: str, doc_word: str, tolerance: int = None):
         )
     else:
         return False
-
+    
 def calc_third(query_word: str, doc_word: str, tolerance: int = None):
     return Levenshtein.distance(query_word, doc_word) <= tolerance
 
-@cache
 def CalcMatch(
     dist_type: DistanceType,
     topic_word: str,
@@ -228,38 +237,117 @@ def StartQuery(
 def EndQuery(id: int):
     SubscriberManager.remove_subscriber(id)
 
+
+class TrieCache:
+    trie_collection = {}
+
+    @staticmethod
+    def add_trie(trie: Trie, doc_words: int):
+        if doc_words not in TrieCache.trie_collection:
+            if len(TrieCache.trie_collection) > 128:
+                TrieCache.trie_collection.pop(next(iter(TrieCache.trie_collection))) 
+
+            TrieCache.trie_collection[doc_words] = trie
+
+    @staticmethod
+    def find_trie(doc_words: int):
+        for key, val in TrieCache.trie_collection.items():
+            if key == doc_words:
+                # print("cached trie")
+                return val
+            
+class DocCache:
+    doc_results: dict[Tuple[int, int]: List[int]] = {}
+
+    # @staticmethod
+    # def add_elem(words_hash, queries_hash, results):
+    #     if words_hash not in DocCache.doc_results:
+    #         if len(DocCache.doc_results) > 128:
+    #             DocCache.doc_results.pop(next(iter(DocCache.doc_results))) 
+    #         DocCache.doc_results[words_hash] = {queries_hash: results}
+    #     else:
+    #         if queries_hash not in DocCache.doc_results[words_hash]:
+    #             DocCache.doc_results[words_hash] = {queries_hash: results}
+    # @staticmethod
+    # def find_elem(words_hash, queries_hash):
+    #     if words_hash in DocCache.doc_results:
+    #         if queries_hash in DocCache.doc_results[words_hash]:
+    #             # print("cache")
+    #             # print(len(DocCache.doc_results[words_hash].values()))
+    #             return DocCache.doc_results[words_hash][queries_hash]
+
+    @staticmethod
+    def add_elem(words_hash, queries_hash, results):
+        if (words_hash, queries_hash) not in DocCache.doc_results.keys():
+            if len(DocCache.doc_results) >= 128:
+                DocCache.doc_results.pop(next(iter(DocCache.doc_results))) 
+
+            DocCache.doc_results[(words_hash, queries_hash)] = results
+
+    @staticmethod
+    def find_elem(words_hash, queries_hash):
+        if (words_hash, queries_hash) in DocCache.doc_results.keys():
+            # print("cached results")
+            return DocCache.doc_results[(words_hash, queries_hash)]
+    
 def MatchDocument(id: int, doc_words: list[str]):
     topics = set(TopicManager.get_active_topics().values())
-    # if id==198:
-    #     for topic in topics:
-    #         print(topic)
-    # doc_words.add("EOF")
-    # print(f"len of active quereis: {len(SubscriberManager.get_active_subscribers())}")
-    # print(f"num topics at the beginning: {len(topics)}")
-    topics_to_shut = set()
-    for word in doc_words:
-        for topic in topics:
-            # if id==198:
-            #     print(f"word to match: {word}, topic: {topic}")
-            if(topic.receive(word)):
-                # if id==198:
-                #     print("i am hereee")
-                topic.matched()
-                topics_to_shut.add(topic)
-        topics -= topics_to_shut
-        topics_to_shut.clear()
-        if topics is None:
-            break
-    # print(f"num topics at the end: {len(topics)}")
-    SubscriberManager.reset_subscriber_count()
+    normal_topics = {topic for topic in topics if topic.dist_type==DistanceType.NORMAL}
+    topics -= normal_topics
 
+    doc_hash = hash(doc_words)
+    query_hash = hash(tuple(SubscriberManager.get_active_subscribers().keys()))
+    results = DocCache.find_elem(doc_hash, query_hash)
+    if results:
+        DocumentCollection.add_document(
+        id, Document(id, len(results), sorted(results))
+        )
+        return
+
+    trie = TrieCache.find_trie(doc_hash)
+    if trie:
+        build_trie = False
+    else:
+        trie = Trie()
+        build_trie=True
+
+    topics_to_shut = set()
+    if build_trie:
+        for word in doc_words:
+            for topic in topics:
+                if(topic.receive(word)):
+                    topic.matched()
+                    topics_to_shut.add(topic)
+            topics -= topics_to_shut
+            topics_to_shut.clear()
+            trie.insert(word)
+        TrieCache.add_trie(trie, doc_hash)
+    else:
+        for word in doc_words:
+            for topic in topics:
+                if(topic.receive(word)):
+                    topic.matched()
+                    topics_to_shut.add(topic)
+            topics -= topics_to_shut
+            topics_to_shut.clear()
+            if not topics:
+                break
+    
+    for topic in normal_topics:
+        if(topic.receive(trie)):
+            topic.matched()
+            topics_to_shut.add(topic)
+    # topics_to_reset = set(TopicManager.get_active_topics().values()) - topics - topics_to_shut
+    # for topic in topics_to_reset:
+    #     topic.reset_subscribers()
+
+    SubscriberManager.reset_subscriber_count()
     results = ResultCollector.get_results()
+    DocCache.add_elem(doc_hash, query_hash, results)
     DocumentCollection.add_document(
         id, Document(id, len(results), sorted(results))
     )
     ResultCollector.reset_results()
-    # print(f"for doc {id} cache stats are: {CalcMatch.cache_info()}")
-
 
 def GenNextAvailableRes(res_id: int):
     results = copy.deepcopy(DocumentCollection.get_doc_results(res_id))
