@@ -9,9 +9,10 @@ from src.app import (
     GenNextAvailableRes,
 )
 
-
+small_file = "/Users/Filip/Downloads/tub_24/DIA/small_test.txt"
+big_file = "/Users/Filip/Downloads/big_test.txt"
 def main():
-    with open("/Users/Filip/Downloads/tub_24/DIA/small_test.txt") as f:
+    with open(big_file) as f:
         # with open("/Users/Filip/Downloads/testt.txt") as f:
         num_cur_results: int = 0
         cur_results = defaultdict(list)
