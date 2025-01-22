@@ -9,9 +9,10 @@ from src.app import (
     GenNextAvailableRes,
 )
 
-
+big_file = "/Users/Filip/Downloads/big_test.txt"
+small_file = "/Users/Filip/Downloads/tub_24/DIA/small_test.txt"
 def main():
-    with open("/Users/Filip/Downloads/tub_24/DIA/small_test.txt") as f:
+    with open(big_file) as f:
         # with open("/Users/Filip/Downloads/testt.txt") as f:
         num_cur_results: int = 0
         # cur_results = defaultdict(list)
@@ -57,8 +58,8 @@ def main():
                 if ch == 'm':
                     # print(get_queries())
                     n = re.findall(r"\d{1,}", line)
-                    doc_id, num_words = int(n[0]), int(n[1])
-                    words = set(line.split()[3:])
+                    doc_id, _ = int(n[0]), int(n[1])
+                    words = frozenset(line.split()[3:])
                     # if doc_id == 198:
                     #     print(len(words))
                     MatchDocument(doc_id, words)

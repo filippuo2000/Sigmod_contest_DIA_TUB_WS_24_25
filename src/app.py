@@ -8,7 +8,6 @@ from conditional_cache import lru_cache
 
 import Levenshtein
 
-
 class DistanceType(Enum):
     NORMAL = 0
     HAMMING = 1
@@ -68,8 +67,11 @@ class Subscriber(Query):
         if self.num_words_to_satisfy == 0:
             # self.satisfied = True
             ResultCollector.add_result(self.id)
-            # self.num_words_to_satisfy = len(self.keywords)
+            self.num_words_to_satisfy = len(self.keywords)
         return None
+    
+    def reset_counter(self):
+        self.num_words_to_satisfy: int = len(self.keywords)
 
 
 class Topic:
@@ -97,6 +99,9 @@ class Topic:
             #     print("I am here")
             subscriber.word_satisfied()
         # self.status = False
+    def reset_subscribers(self):
+        for _, subscriber in self.subscribers.items():
+            subscriber.reset_counter()
 
     def __repr__(self) -> str:
         class_name = self.__class__.__name__
@@ -140,7 +145,7 @@ class TopicManager:
 
     @staticmethod
     def add_topic(topic_id: Tuple, word: str, subscriber: Subscriber):
-        if topic_id in TopicManager.active_topics.keys():
+        if topic_id in TopicManager.active_topics:
             # add a subscriber to an existing topic
             TopicManager.active_topics[topic_id].subscribers[subscriber.id] = subscriber
         else:
@@ -228,6 +233,40 @@ def StartQuery(
 def EndQuery(id: int):
     SubscriberManager.remove_subscriber(id)
 
+class DocCache:
+    doc_results: dict[Tuple[int, int]: List[int]] = {}
+
+    @staticmethod
+    def add_elem(words_hash, queries_hash, results):
+        if words_hash not in DocCache.doc_results:
+            if len(DocCache.doc_results) > 128:
+                DocCache.doc_results.pop(next(iter(DocCache.doc_results))) 
+            DocCache.doc_results[words_hash] = {queries_hash: results}
+        else:
+            if queries_hash not in DocCache.doc_results[words_hash]:
+                DocCache.doc_results[words_hash] = {queries_hash: results}
+    @staticmethod
+    def find_elem(words_hash, queries_hash):
+        if words_hash in DocCache.doc_results:
+            if queries_hash in DocCache.doc_results[words_hash]:
+                # print("cache")
+                # print(len(DocCache.doc_results[words_hash].values()))
+                return DocCache.doc_results[words_hash][queries_hash]
+
+    # @staticmethod
+    # def add_elem(words_hash, queries_hash, results):
+    #     if (words_hash, queries_hash) not in DocCache.doc_results.keys():
+    #         if len(DocCache.doc_results) >= 128:
+    #             DocCache.doc_results.pop(next(iter(DocCache.doc_results))) 
+
+    #         DocCache.doc_results[(words_hash, queries_hash)] = results
+
+    # @staticmethod
+    # def find_elem(words_hash, queries_hash):
+    #     if (words_hash, queries_hash) in DocCache.doc_results.keys():
+    #         # print("cached results")
+    #         return DocCache.doc_results[(words_hash, queries_hash)]
+    
 def MatchDocument(id: int, doc_words: list[str]):
     topics = set(TopicManager.get_active_topics().values())
     # if id==198:
@@ -236,24 +275,34 @@ def MatchDocument(id: int, doc_words: list[str]):
     # doc_words.add("EOF")
     # print(f"len of active quereis: {len(SubscriberManager.get_active_subscribers())}")
     # print(f"num topics at the beginning: {len(topics)}")
+    doc_hash = hash(doc_words)
+    query_hash = hash(tuple(SubscriberManager.get_active_subscribers()))
+
+    results = DocCache.find_elem(doc_hash, query_hash)
+    if results:
+        DocumentCollection.add_document(
+        id, Document(id, len(results), sorted(results))
+        )
+        return
     topics_to_shut = set()
     for word in doc_words:
         for topic in topics:
-            # if id==198:
-            #     print(f"word to match: {word}, topic: {topic}")
             if(topic.receive(word)):
-                # if id==198:
-                #     print("i am hereee")
                 topic.matched()
                 topics_to_shut.add(topic)
         topics -= topics_to_shut
         topics_to_shut.clear()
         if topics is None:
             break
+
+    topics_to_reset = set(TopicManager.get_active_topics().values()) - topics
+    for topic in topics_to_reset:
+        topic.reset_subscribers()
     # print(f"num topics at the end: {len(topics)}")
-    SubscriberManager.reset_subscriber_count()
+    # SubscriberManager.reset_subscriber_count()
 
     results = ResultCollector.get_results()
+    DocCache.add_elem(doc_hash, query_hash, results)
     DocumentCollection.add_document(
         id, Document(id, len(results), sorted(results))
     )
