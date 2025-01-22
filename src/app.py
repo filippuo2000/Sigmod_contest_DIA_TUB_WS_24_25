@@ -239,8 +239,9 @@ class DocCache:
     @staticmethod
     def add_elem(words_hash, queries_hash, results):
         if words_hash not in DocCache.doc_results:
-            if len(DocCache.doc_results) > 128:
-                DocCache.doc_results.pop(next(iter(DocCache.doc_results))) 
+            if len(DocCache.doc_results) > 256:
+                del DocCache.doc_results[list(DocCache.doc_results.keys())[0]]
+                # DocCache.doc_results.pop(next(iter(DocCache.doc_results))) 
             DocCache.doc_results[words_hash] = {queries_hash: results}
         else:
             if queries_hash not in DocCache.doc_results[words_hash]:
@@ -266,20 +267,22 @@ class DocCache:
     #     if (words_hash, queries_hash) in DocCache.doc_results.keys():
     #         # print("cached results")
     #         return DocCache.doc_results[(words_hash, queries_hash)]
-    
+
+@lru_cache(maxsize=128)
+def get_results(doc_hash, queries_hash):
+    return ResultCollector.get_results()
+
 def MatchDocument(id: int, doc_words: list[str]):
     topics = set(TopicManager.get_active_topics().values())
-    # if id==198:
-    #     for topic in topics:
-    #         print(topic)
-    # doc_words.add("EOF")
-    # print(f"len of active quereis: {len(SubscriberManager.get_active_subscribers())}")
-    # print(f"num topics at the beginning: {len(topics)}")
+
     doc_hash = hash(doc_words)
     query_hash = hash(tuple(SubscriberManager.get_active_subscribers()))
 
-    results = DocCache.find_elem(doc_hash, query_hash)
+    results = get_results(doc_hash, query_hash)
+
+    # results = DocCache.find_elem(doc_hash, query_hash)
     if results:
+        # print("cached")
         DocumentCollection.add_document(
         id, Document(id, len(results), sorted(results))
         )
@@ -301,8 +304,9 @@ def MatchDocument(id: int, doc_words: list[str]):
     # print(f"num topics at the end: {len(topics)}")
     # SubscriberManager.reset_subscriber_count()
 
-    results = ResultCollector.get_results()
-    DocCache.add_elem(doc_hash, query_hash, results)
+    # results = ResultCollector.get_results()
+    results = get_results(doc_hash, query_hash)
+    # DocCache.add_elem(doc_hash, query_hash, results)
     DocumentCollection.add_document(
         id, Document(id, len(results), sorted(results))
     )
