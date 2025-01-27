@@ -9,6 +9,14 @@ from operator import itemgetter
 
 import Levenshtein
 
+class ErrorCode(Enum):
+    EC_SUCCESS = 0
+    EC_NO_AVAIL_RES = 1
+    EC_FAIL = 2
+
+    def __str__(self):
+        return f"{self.name} (Code {self.value})"
+    
 class DistanceType(Enum):
     NORMAL = 0
     HAMMING = 1
@@ -18,13 +26,12 @@ class DistanceType(Enum):
         return f"{self.__class__.__name__}.{self.name}"
 
 class Document:
-    def __init__(self, id, num_results, query_ids):
+    def __init__(self, id, query_ids):
         self.id: int = id
-        self.num_results: int = num_results
         self.query_ids: Set[int] = query_ids
 
 class DocumentCollection:
-    docs = defaultdict(Document)
+    docs = {}
 
     @staticmethod
     def add_document(doc_id: int, document: Document):
@@ -53,22 +60,32 @@ class Query:
             f"dist_type: {self.dist_type}, keywords: {self.keywords},"
             f"tolerance: {self.tolerance}"
         )
+    
+class QueryManager:
+    active_queries = defaultdict(Query)
+
+    @staticmethod
+    def add_query(query_id: int, query_object: Query):
+        QueryManager.active_queries[query_id] = query_object
+
+    @staticmethod
+    def remove_query(query_id):
+        if query_id in QueryManager.active_queries:
+            del QueryManager.active_queries[query_id]
+
+    @staticmethod
+    def get_active_queries():
+        return QueryManager.active_queries
 
 class Subscriber(Query):
     def __init__(self, id: int, dist_type: DistanceType, keywords: list[str], tolerance: int = None):
         super().__init__(id, dist_type, keywords, tolerance)
         self.num_words_to_satisfy: int = len(self.keywords)
-        # self.satisfied = False
 
     def word_satisfied(self):
-        # make sure this is thread-safe somehow
         self.num_words_to_satisfy -= 1
-        # if id==198:
-        #     print(f"I have {len(self.keywords) - self.num_words_to_satisfy} left to satisfy")
         if self.num_words_to_satisfy == 0:
-            # self.satisfied = True
             ResultCollector.add_result(self.id)
-            # self.num_words_to_satisfy = len(self.keywords)
         return None
     
     def reset_counter(self):
@@ -82,24 +99,15 @@ class Topic:
         self.dist_type = dist_type
         self.tolerance = tolerance
         self.subscribers = {subscriber.id: subscriber}
-        # self.status: bool[True | False | None] = None
 
-    # find a way to turn off the topic after it has been matched
     def receive(self, doc_word):
-        # if id==198:
-        #     print(f"I have {len(self.subscribers)} subscribers")
         if CalcMatch(self.dist_type, self.word, doc_word, self.tolerance):
-            # self.status = True
             return True
         return False
-            # self.matched()
 
     def matched(self):
         for _, subscriber in self.subscribers.items():
-            # if id==198:
-            #     print("I am here")
             subscriber.word_satisfied()
-        # self.status = False
     def reset_subscribers(self):
         for _, subscriber in self.subscribers.items():
             subscriber.reset_counter()
@@ -140,6 +148,9 @@ class SubscriberManager:
         for _, sub in SubscriberManager.active_subscribers.items():
             sub.num_words_to_satisfy = len(sub.keywords)
 
+    @staticmethod
+    def reset():
+        SubscriberManager.active_subscribers = {}
 
 class TopicManager:
     active_topics: dict[Topic] = {}
@@ -179,6 +190,10 @@ class TopicManager:
     @staticmethod
     def get_active_topics_keys():
         return set(TopicManager.active_topics.keys())
+    
+    @staticmethod
+    def reset():
+        TopicManager.active_topics = {}
 
 
 class ResultCollector:
@@ -227,66 +242,44 @@ def CalcMatch(
     else:
         raise ValueError(
             "topic word should not be empty when calculating distance"
-        )        
-
-def get_queries():
-    return Subscriber.get_active_subscribers()
-
-def StartQuery(
-    id: int, dist_type: int, words: list[str], tolerance: int = None
-) -> None:
-    if not words:
-        raise ValueError(
-            f"empty word list for query id {id}, words are {words}"
         )
-    SubscriberManager.add_subscriber(
-        id, Subscriber(id, DistanceType(dist_type), words, tolerance)
-    )
 
-def EndQuery(id: int):
-    SubscriberManager.remove_subscriber(id)
+# class DocCache:
+#     doc_results: dict[Tuple[int, int]: List[int]] = {}
 
-class DocCache:
-    doc_results: dict[Tuple[int, int]: List[int]] = {}
-
-    @staticmethod
-    def add_elem(words_hash, queries_hash, results):
-        if words_hash not in DocCache.doc_results:
-            if len(DocCache.doc_results) > 128:
-                del DocCache.doc_results[list(DocCache.doc_results.keys())[0]]
-                # DocCache.doc_results.pop(next(iter(DocCache.doc_results))) 
-            DocCache.doc_results[words_hash] = {queries_hash: results}
-        else:
-            if queries_hash not in DocCache.doc_results[words_hash]:
-                DocCache.doc_results[words_hash] = {queries_hash: results}
-    @staticmethod
-    def find_elem(words_hash, queries_hash):
-        if words_hash in DocCache.doc_results:
-            if queries_hash in DocCache.doc_results[words_hash]:
-                # print("cache")
-                # print(len(DocCache.doc_results[words_hash].values()))
-                return DocCache.doc_results[words_hash][queries_hash]
-
-    # @staticmethod
-    # def add_elem(words_hash, queries_hash, results):
-    #     if (words_hash, queries_hash) not in DocCache.doc_results.keys():
-    #         if len(DocCache.doc_results) >= 128:
-    #             DocCache.doc_results.pop(next(iter(DocCache.doc_results))) 
-
-    #         DocCache.doc_results[(words_hash, queries_hash)] = results
-
-    # @staticmethod
-    # def find_elem(words_hash, queries_hash):
-    #     if (words_hash, queries_hash) in DocCache.doc_results.keys():
-    #         # print("cached results")
-    #         return DocCache.doc_results[(words_hash, queries_hash)]
+#     @staticmethod
+#     def add_elem(words_hash, queries_hash, results):
+#         if words_hash not in DocCache.doc_results:
+#             if len(DocCache.doc_results) > 128:
+#                 first_key = next(iter(DocCache.doc_results))
+#                 del DocCache.doc_results[first_key]
+#                 # DocCache.doc_results.pop(next(iter(DocCache.doc_results))) 
+#             DocCache.doc_results[words_hash] = {queries_hash: results}
+#         else:
+#             if queries_hash not in DocCache.doc_results[words_hash]:
+#                 DocCache.doc_results[words_hash] = {queries_hash: results}
+#     @staticmethod
+#     def find_elem(words_hash, queries_hash):
+#         if words_hash in DocCache.doc_results:
+#             if queries_hash in DocCache.doc_results[words_hash]:
+#                 # print("cache")
+#                 # print(len(DocCache.doc_results[words_hash].values()))
+#                 return DocCache.doc_results[words_hash][queries_hash]
 
 class ProcessedTopicsCache:
     doc_results: dict[List] = {}
 
     @staticmethod
     def add_doc(doc_hash: int, positive_topics_ids: set, negative_topics_ids: set):
+        if len(ProcessedTopicsCache.doc_results) > 5000:
+            first_key = next(iter(ProcessedTopicsCache.doc_results))
+            del ProcessedTopicsCache.doc_results[first_key]
         if doc_hash in ProcessedTopicsCache.doc_results:
+            if len(ProcessedTopicsCache.doc_results[doc_hash][0]) > 1000:
+                ProcessedTopicsCache.doc_results[doc_hash][0].pop()
+            elif len(ProcessedTopicsCache.doc_results[doc_hash][1]) > 1000:
+                ProcessedTopicsCache.doc_results[doc_hash][1].pop()
+
             ProcessedTopicsCache.doc_results[doc_hash][0].update(negative_topics_ids)
             ProcessedTopicsCache.doc_results[doc_hash][1].update(positive_topics_ids)
         else:
@@ -296,103 +289,138 @@ class ProcessedTopicsCache:
     def get_doc(doc_hash: int):
         if doc_hash in ProcessedTopicsCache.doc_results:
             return ProcessedTopicsCache.doc_results[doc_hash]
+    @staticmethod
+    def clean_cache():
+        ProcessedTopicsCache.doc_results = {}
 
 
-@lru_cache(maxsize=128)
+@lru_cache(maxsize=512)
 def get_results(doc_hash, queries_hash):
     return ResultCollector.get_results()
 
-def MatchDocument(id: int, doc_words: frozenset[str]):
+def reset_everything():
+    ProcessedTopicsCache.clean_cache()
+    CalcMatch.cache_clear()
+    get_results.cache_clear()
+    TopicManager.reset()
+    SubscriberManager.reset()
 
-    doc_hash = hash(doc_words)
-    query_hash = hash(tuple(SubscriberManager.get_active_subscribers()))
-    results = get_results(doc_hash, query_hash)
-    if results:
-        # print("cached")
-        DocumentCollection.add_document(
-        id, Document(id, len(results), sorted(results))
-        )
-        return
-    
-    cached_topics = ProcessedTopicsCache.get_doc(doc_hash)
-    # topics = set(TopicManager.get_active_topics().values())
-    curr_topic_ids = TopicManager.get_active_topics_keys()
-
-    if cached_topics:
-        cached_negative_topics = cached_topics[0]
-        cached_positive_topics = cached_topics[1]
-        # print(f"intersection is: {len(cached_negative_topics.intersection(cached_positive_topics))}")
-        if cached_negative_topics:
-            curr_negative_ids = curr_topic_ids.intersection(cached_negative_topics)
-        if cached_positive_topics:
-            curr_positive_ids = curr_topic_ids.intersection(cached_positive_topics)
-        # print(f"ids type: {type(curr_positive_ids)}")
-        # print(f"curr_positive ids are: {curr_positive_ids}")
-        curr_positive_topics = TopicManager.get_topics_by_keys(curr_positive_ids)
-        
-        # print(f"topics afterewards type: {type(curr_positive_topics)}")
-        # curr_negative_topics = TopicManager.get_topics_by_keys(curr_negative_ids)
-
-
-        # print(f"num of positive topics: {len(curr_positive_topics)}")
-        for topic in curr_positive_topics:
-            topic.matched()
-
-        # topics = topics - curr_negative_topics - curr_positive_topics
-        # print(curr_topic_ids-curr_positive_ids-curr_negative_ids)
-        # print(f"positive ids: {len(curr_positive_ids)}")
-        # print(f"negative ids: {len(curr_negative_ids)}")
-        # print(f"all ids: {len(curr_topic_ids)}")
-        # print(f"intersection is: {len(curr_positive_ids.intersection(curr_negative_ids))}")
-        if len(curr_topic_ids) == len(curr_positive_ids)+len(curr_negative_ids):
-            results = ResultCollector.get_results()
-            # DocCache.add_elem(doc_hash, query_hash, results)
-            SubscriberManager.reset_subscriber_count()
+class PubSubVersion:
+    @staticmethod
+    def MatchDocument(id: int, doc_words: frozenset[str]):
+        doc_words = frozenset(doc_words)
+        doc_hash = hash(doc_words)
+        query_hash = hash(tuple(SubscriberManager.get_active_subscribers()))
+        results = get_results(doc_hash, query_hash)
+        if results:
+            print("cached")
             DocumentCollection.add_document(
-                id, Document(id, len(results), sorted(results))
+            id, Document(id, sorted(results))
             )
-            ResultCollector.reset_results()
-            # print("i am here")
-            return
-        else:
-            # print(f"len of results is: {len(results)}")
-            curr_topic_ids = curr_topic_ids - curr_positive_ids - curr_negative_ids
-            topics = TopicManager.get_topics_by_keys(curr_topic_ids)
-            # print(f"len of topics in this case: {len(topics)}")
-    else:
-        topics = set(TopicManager.get_active_topics().values())
+            return ErrorCode.EC_SUCCESS
+        
+        cached_topics = ProcessedTopicsCache.get_doc(doc_hash)
+        curr_topic_ids = TopicManager.get_active_topics_keys()
 
-    # results = DocCache.find_elem(doc_hash, query_hash)
-    topics_to_shut = set()
-    for word in doc_words:
-        for topic in topics:
-            if(topic.receive(word)):
+        if cached_topics:
+            cached_negative_topics = cached_topics[0]
+            cached_positive_topics = cached_topics[1]
+            # print(f"intersection is: {len(cached_negative_topics.intersection(cached_positive_topics))}")
+            if cached_negative_topics:
+                curr_negative_ids = curr_topic_ids.intersection(cached_negative_topics)
+            if cached_positive_topics:
+                curr_positive_ids = curr_topic_ids.intersection(cached_positive_topics)
+            # print(f"ids type: {type(curr_positive_ids)}")
+            # print(f"curr_positive ids are: {curr_positive_ids}")
+            curr_positive_topics = TopicManager.get_topics_by_keys(curr_positive_ids)
+            
+            # print(f"topics afterewards type: {type(curr_positive_topics)}")
+            # curr_negative_topics = TopicManager.get_topics_by_keys(curr_negative_ids)
+
+
+            # print(f"num of positive topics: {len(curr_positive_topics)}")
+            for topic in curr_positive_topics:
                 topic.matched()
-                topics_to_shut.add(topic)
-        topics -= topics_to_shut
-        topics_to_shut.clear()
-        if topics is None:
-            break
-    negative_topic_ids = set((topic.id for topic in topics))
 
-    # topics_to_reset = set(TopicManager.get_active_topics().values())
-    # for topic in topics_to_reset:
-    #     topic.reset_subscribers()
-    # print(f"num topics at the end: {len(topics)}")
-    SubscriberManager.reset_subscriber_count()
-    results = ResultCollector.get_results()
-    # results = get_results(doc_hash, query_hash)
-    ProcessedTopicsCache.add_doc(doc_hash, curr_topic_ids-negative_topic_ids, negative_topic_ids)
-    # DocCache.add_elem(doc_hash, query_hash, results)
-    DocumentCollection.add_document(
-        id, Document(id, len(results), sorted(results))
-    )
-    ResultCollector.reset_results()
-    # print(f"for doc {id} cache stats are: {CalcMatch.cache_info()}")
+            # topics = topics - curr_negative_topics - curr_positive_topics
+            # print(curr_topic_ids-curr_positive_ids-curr_negative_ids)
+            # print(f"positive ids: {len(curr_positive_ids)}")
+            # print(f"negative ids: {len(curr_negative_ids)}")
+            # print(f"all ids: {len(curr_topic_ids)}")
+            # print(f"intersection is: {len(curr_positive_ids.intersection(curr_negative_ids))}")
+            if len(curr_topic_ids) == len(curr_positive_ids)+len(curr_negative_ids):
+                results = ResultCollector.get_results()
+                # DocCache.add_elem(doc_hash, query_hash, results)
+                SubscriberManager.reset_subscriber_count()
+                DocumentCollection.add_document(
+                    id, Document(id, sorted(results))
+                )
+                ResultCollector.reset_results()
+                # print("i am here")
+                return ErrorCode.EC_SUCCESS
+            else:
+                # print(f"len of results is: {len(results)}")
+                curr_topic_ids = curr_topic_ids - curr_positive_ids - curr_negative_ids
+                topics = TopicManager.get_topics_by_keys(curr_topic_ids)
+                # print(f"len of topics in this case: {len(topics)}")
+        else:
+            topics = set(TopicManager.get_active_topics().values())
 
+        # results = DocCache.find_elem(doc_hash, query_hash)
+        topics_to_shut = set()
 
-def GenNextAvailableRes(res_id: int):
-    results = copy.deepcopy(DocumentCollection.get_doc_results(res_id))
-    assert results.id == res_id
-    DocumentCollection.remove_doc(res_id)
-    return results.num_results, results.query_ids
+        for word in doc_words:
+            for topic in topics:
+                if(topic.receive(word)):
+                    topic.matched()
+                    topics_to_shut.add(topic)
+            topics -= topics_to_shut
+            topics_to_shut.clear()
+            if topics is None:
+                break
+
+        negative_topic_ids = set((topic.id for topic in topics))
+
+        # topics_to_reset = set(TopicManager.get_active_topics().values())
+        # for topic in topics_to_reset:
+        #     topic.reset_subscribers()
+        # print(f"num topics at the end: {len(topics)}")
+        SubscriberManager.reset_subscriber_count()
+        results = ResultCollector.get_results()
+        # results = get_results(doc_hash, query_hash)
+        ProcessedTopicsCache.add_doc(doc_hash, curr_topic_ids-negative_topic_ids, negative_topic_ids)
+        # DocCache.add_elem(doc_hash, query_hash, results)
+        DocumentCollection.add_document(
+            id, Document(id, sorted(results))
+        )
+        ResultCollector.reset_results()
+        # print(f"for doc {id} cache stats are: {CalcMatch.cache_info()}")
+        return ErrorCode.EC_SUCCESS
+
+    @staticmethod
+    def StartQuery(
+        id: int, dist_type: int, words: list[str], tolerance: int = None
+    ) -> None:
+        if not words:
+            raise ValueError(
+                f"empty word list for query id {id}, words are {words}"
+            )
+        SubscriberManager.add_subscriber(
+            id, Subscriber(id, DistanceType(dist_type), words, tolerance)
+        )
+        return ErrorCode.EC_SUCCESS
+
+    @staticmethod
+    def EndQuery(id: int):
+        SubscriberManager.remove_subscriber(id)
+        return ErrorCode.EC_SUCCESS
+
+    @staticmethod
+    def GenNextAvailableRes(res_id: int, empty_list: List):
+        if DocumentCollection.get_doc_results == 0:
+            return ErrorCode.EC_NO_AVAIL_RES
+        results = copy.deepcopy(DocumentCollection.get_doc_results(res_id))
+        assert results.id == res_id
+        empty_list.extend(results.query_ids)
+        DocumentCollection.remove_doc(res_id)
+        return ErrorCode.EC_SUCCESS
