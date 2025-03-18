@@ -1,6 +1,6 @@
 # Implementation of SIGMOD Contest 2013 - project for DIA lecture at TUB WS24/25
 
-This repository contains the implementation for the [SIGMOD Contest 2013](https://transactional.blog/sigmod-contest/2013), which focuses on the continuous stream of queries processing task. Queries contain strings and type of a calculated distance (normal, Hamming dist, Edit dist) and are matched against documents containing strings. \n
+This repository contains the implementation for the [SIGMOD Contest 2013](https://transactional.blog/sigmod-contest/2013), which focuses on the continuous stream of queries processing task. Queries contain strings and type of a calculated distance (normal, Hamming dist, Edit dist) and are matched against documents containing strings.
 
 The task was to first implement a basic implementation, which in this case was simply a brute-force solution and then refine the solution to achieve a minimum of 20x speedup on the processing of test .txt files. Speed up was achieved by implementing the publish-subscribe architecture, where a set of words from the active queries are the topics, to which certain queries subscribe. Publisher is then publishing single words from every document that need to be processed. Further speedup has been achieved by implementing the caching mechanism, so that for every document only the unprocessed topics are checked against it. 
 
@@ -24,7 +24,6 @@ For basic implementation:
   ```sh
   python main.py --dataset_path path_to_test.txt --basic_version --output_file_path output_file.txt
    ```
-
 where:
 - **--dataset_path** — required argument for specifying the path to the input test file in text format.
 - **--basic_version** — a flag indicating that a basic solution should be executed. If omitted, the improved one is used.
