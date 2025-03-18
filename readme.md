@@ -18,9 +18,9 @@ in this case with the basic implementation:
   python main.py --dataset_path path_to_test.txt --basic_version --output_file_path output_file.txt
    ```
 where:
-− **-dataset path**: a required argument for specifying the path to the input test file in text format.
-− **-basic version**: a flag indicating that a basic solution should be executed. If omitted, improved one is used.
-− **-output_summary_path**: a required argument specifying the path to a text file where the program’s output will
+− **-dataset path** a required argument for specifying the path to the input test file in text format.
+− **-basic version** a flag indicating that a basic solution should be executed. If omitted, improved one is used.
+− **-output_summary_path** a required argument specifying the path to a text file where the program’s output will
 be saved. This output includes details such as a summary of returned error codes, the number of successfully
 processed documents, and the number of mismatches where the results deviate from expected outputs.
 
