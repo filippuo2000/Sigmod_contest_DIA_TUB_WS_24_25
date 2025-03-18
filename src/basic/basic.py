@@ -1,5 +1,4 @@
 import copy
-from typing import List
 
 from src.basic.query_manager import QueryManager
 from src.basic.utils import CalcMatch

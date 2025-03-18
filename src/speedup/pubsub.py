@@ -21,7 +21,7 @@ class PubSubVersion:
         doc_hash = hash(doc_words)
         query_hash = hash(tuple(SubscriberManager.get_active_subscribers()))
 
-        # check if results for a combination of document and queries 
+        # check if results for a combination of document and queries
         # have already been obtained
         results = get_results(doc_hash, query_hash)
         if results:

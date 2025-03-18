@@ -6,6 +6,7 @@ from src.basic.basic import BasicVersion
 from src.common_functionality.errors import ErrorCode
 from src.speedup.pubsub import PubSubVersion
 
+
 def make_parse():
     parser = argparse.ArgumentParser()
     parser.add_argument('--dataset_path', type=str)
@@ -21,12 +22,6 @@ def make_parse():
     return args
 
 
-# big "/Users/Filip/Downloads/big_test.txt"
-# small "/Users/Filip/Downloads/tub_24/DIA/small_test.txt"
-
-
-# prompt:
-# /Users/Filip/opt/anaconda3/envs/dia/bin/python /Users/Filip/Downloads/tub_24/DIA_my_impl/main.py --dataset_path /Users/Filip/Downloads/small_test.txt --output_summary_path /Users/Filip/Downloads/tttt.txt
 def main(args):
     doc_counter = 0
     correct_matches = 0
@@ -63,14 +58,13 @@ def main(args):
                         error_flag = version.GenNextAvailableRes(id, query_ids)
                         if error_flag == ErrorCode.EC_NO_AVAIL_RES:
                             print(
-                                "The call to GetNextAvailRes() returned EC_NO_AVAIL_RES, \
+                                "The call to GetNextAvailRes()returned EC_NO_AVAIL_RES,\
                                     but there is still undelivered documents.\n"
                             )
                             flags[ErrorCode.EC_NO_AVAIL_RES] += 1
                             return
                         if error_flag == ErrorCode.EC_SUCCESS:
                             flags[ErrorCode.EC_SUCCESS] += 1
-
                         if len(query_ids) != len(res):
                             results_match = True
 
@@ -83,7 +77,7 @@ def main(args):
                             raise ValueError(
                                 f"Results for document id {id} do not match,\n \
                                                 Num of true results: {len(res)}\n \
-                                                Num of predicted results is: {len(query_ids)}\n \
+                                                Num of pred res: {len(query_ids)}\n \
                                                 True results are: {res}\n \
                                                 Predicted results are: {query_ids}"
                             )
@@ -170,10 +164,10 @@ def main(args):
                         wrong_matches += 1
                         wrong_documents.append(id)
                         raise ValueError(
-                            f"Results for document id {id} do not match,\n \
-                                            Num of true results: {len(res)}\n \
-                                            Num of predicted results is: {len(query_ids)}\n \
-                                            True results are: {res}\n \
+                            f"Results for document id {id} do not match,\n\
+                                            Num of true results: {len(res)}\n\
+                                            Num of pred res: {len(query_ids)}\n\
+                                            True results are: {res}\n\
                                             Predicted results are: {query_ids}"
                         )
                     correct_matches += 1
