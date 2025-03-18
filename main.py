@@ -1,56 +1,120 @@
+import argparse
 import re
 import time
 
-from collections import defaultdict
-from src.app import StartQuery, EndQuery, MatchDocument, GenNextAvailableRes, get_queries
+from src.basic.basic import BasicVersion
+from src.common_functionality.errors import ErrorCode
+from src.speedup.pubsub import PubSubVersion
 
 
-def main():
-    with open("/Users/Filip/Downloads/tub_24/DIA/small_test.txt") as f:  
-    # with open("/Users/Filip/Downloads/testt.txt") as f:
+def make_parse():
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--dataset_path', type=str)
+    parser.add_argument(
+        '--basic_version',
+        action="store_true",
+        help="this flag activates the basic, non-optimized version",
+    )
+    parser.add_argument(
+        '--output_summary_path', type=str, default="summary.txt"
+    )
+    args = parser.parse_args()
+    return args
+
+
+def main(args):
+    doc_counter = 0
+    correct_matches = 0
+    wrong_matches = 0
+    wrong_documents = []
+    flags = {
+        ErrorCode.EC_SUCCESS: 0,
+        ErrorCode.EC_FAIL: 0,
+        ErrorCode.EC_NO_AVAIL_RES: 0,
+    }
+
+    test_file = args.dataset_path
+
+    if args.basic_version:
+        version = BasicVersion
+    else:
+        version = PubSubVersion
+
+    start = time.time()
+    with open(test_file) as f:
         num_cur_results: int = 0
-        cur_results = defaultdict(list)
+        cur_results = {}
+
         while 1:
             try:
                 line = next(f)
                 ch = re.search("^.", line).group()
-            
-                if ch == 's' and num_cur_results>0:
+
+                if (ch == 's' or ch == 'e') and num_cur_results > 0:
                     # iterating over different documents and their corresponding results
                     for id, res in cur_results.items():
-                        error_flag = False
-                        num_results, query_ids = GenNextAvailableRes(id)
+                        results_match = False
+                        query_ids = []
+                        error_flag = version.GenNextAvailableRes(id, query_ids)
+                        if error_flag == ErrorCode.EC_NO_AVAIL_RES:
+                            print(
+                                "The call to GetNextAvailRes()returned EC_NO_AVAIL_RES,\
+                                    but there is still undelivered documents.\n"
+                            )
+                            flags[ErrorCode.EC_NO_AVAIL_RES] += 1
+                            return
+                        if error_flag == ErrorCode.EC_SUCCESS:
+                            flags[ErrorCode.EC_SUCCESS] += 1
+                        if len(query_ids) != len(res):
+                            results_match = True
 
-                        if num_results != len(res):
-                            error_flag = True
-                        
                         if query_ids != res:
-                            error_flag = True
-                        
-                        if error_flag:
-                            raise ValueError(f"Results for document id {id} do not match,\n \
+                            results_match = True
+
+                        if results_match:
+                            wrong_matches += 1
+                            wrong_documents.append(id)
+                            raise ValueError(
+                                f"Results for document id {id} do not match,\n \
                                                 Num of true results: {len(res)}\n \
-                                                Num of predicted results is: {num_results}\n \
+                                                Num of pred res: {len(query_ids)}\n \
                                                 True results are: {res}\n \
-                                                Predicted results are: {query_ids}")
+                                                Predicted results are: {query_ids}"
+                            )
+                        correct_matches += 1
+
                     num_cur_results = 0
                     cur_results.clear()
-                        
+
                 if ch == 's':
                     n = re.findall(r"\d{1,}", line)
-                    query_id, dist_type, tolerance, num_words = list(map(int, n))
-                    keywords = line.split()[-int(n[-1]):]
+                    query_id, dist_type, tolerance, num_words = list(
+                        map(int, n)
+                    )
+                    keywords = line.split()[-int(n[-1]) :]
                     assert keywords is not None
-                    StartQuery(query_id, dist_type, keywords, tolerance)
-                    # print("query id: ", query_id, "dist type: ", dist_type, "tolerance: ", tolerance, "num word in query: ", num_words)
+                    error_flag = version.StartQuery(
+                        query_id, dist_type, keywords, tolerance
+                    )
+                    if error_flag == ErrorCode.EC_FAIL:
+                        print("The call to StartQuery() returned EC_FAIL.\n")
+                        flags[ErrorCode.EC_FAIL] += 1
+                        return
+                    elif error_flag == ErrorCode.EC_SUCCESS:
+                        flags[ErrorCode.EC_SUCCESS] += 1
 
                 if ch == 'm':
-                    # print(get_queries())
                     n = re.findall(r"\d{1,}", line)
-                    doc_id, num_words = int(n[0]), int(n[1])
+                    doc_id, _ = int(n[0]), int(n[1])
                     words = line.split()[3:]
-                    MatchDocument(doc_id, words)
-                    # print("doc id: ", doc_id, "num of words: ", num_words)  
+                    error_flag = version.MatchDocument(doc_id, words)
+                    if error_flag == ErrorCode.EC_FAIL:
+                        print("The call to StartQuery() returned EC_FAIL.\n")
+                        flags[ErrorCode.EC_FAIL] += 1
+                        return
+                    elif error_flag == ErrorCode.EC_SUCCESS:
+                        flags[ErrorCode.EC_SUCCESS] += 1
+                    doc_counter += 1
 
                 if ch == 'r':
                     n = re.findall(r"\d{1,}", line)
@@ -58,24 +122,87 @@ def main():
                     query_ids = list(map(int, query_ids))
                     num_cur_results += 1
                     cur_results[res_id] = sorted(query_ids)
-                    # match the document when all the results come
-                    # print("result id: ", res_id, "matched queries: ", query_id)
 
                 if ch == 'e':
-                    del_query_id = int(re.search(r"\d{1,}",line).group())
-                    EndQuery(del_query_id)
-                    # print("id to remove: ", int(del_query_id))
+                    del_query_id = int(re.search(r"\d{1,}", line).group())
+                    error_flag = version.EndQuery(del_query_id)
+                    if error_flag == ErrorCode.EC_FAIL:
+                        print("The call to StartQuery() returned EC_FAIL.\n")
+                        flags[ErrorCode.EC_FAIL] += 1
+                        return
+                    elif error_flag == ErrorCode.EC_SUCCESS:
+                        flags[ErrorCode.EC_SUCCESS] += 1
 
                 if ch is None:
-                    raise ValueError(f"char value {ch} is not expexted at the beginning of the line")
+                    raise ValueError(
+                        f"char value {ch} is not expected at the beginning of the line"
+                    )
 
             except StopIteration:
+                for id, res in cur_results.items():
+                    results_match = False
+                    query_ids = []
+                    error_flag = version.GenNextAvailableRes(id, query_ids)
+
+                    if error_flag == ErrorCode.EC_NO_AVAIL_RES:
+                        print(
+                            "The call to GetNextAvailRes() returned EC_NO_AVAIL_RES, \
+                                but there is still undelivered documents.\n"
+                        )
+                        flags[ErrorCode.EC_NO_AVAIL_RES] += 1
+                        return
+                    if error_flag == ErrorCode.EC_SUCCESS:
+                        flags[ErrorCode.EC_SUCCESS] += 1
+
+                    if len(query_ids) != len(res):
+                        results_match = True
+
+                    if query_ids != res:
+                        results_match = True
+
+                    if results_match:
+                        wrong_matches += 1
+                        wrong_documents.append(id)
+                        raise ValueError(
+                            f"Results for document id {id} do not match,\n\
+                                            Num of true results: {len(res)}\n\
+                                            Num of pred res: {len(query_ids)}\n\
+                                            True results are: {res}\n\
+                                            Predicted results are: {query_ids}"
+                        )
+                    correct_matches += 1
+
+                num_cur_results = 0
+                cur_results.clear()
                 print("Reached end of file")
                 break
 
+    end = time.time()
+    run_time = abs(end - start)
+    print(f"Elapsed running time is: {run_time}")
+    f = open(args.output_summary_path, "w")
+    f.writelines(
+        [
+            f"RUN ON {test_file.split('/')[-1]}\n",
+            f"NUM OF DOCUMENTS: {doc_counter}\n",
+            f"NUM CORRECT MATCHES: {correct_matches}\n",
+            f"NUM WRONG MATCHES: {wrong_matches}\n",
+            f"WRONG MATCHES: {wrong_documents}\n",
+            f"RUN TIME: {run_time}\n",
+            f"FLAGS: {flags}\n",
+        ]
+    )
+    f.close()
+    return run_time
+
 
 if __name__ == "__main__":
-    start = time.time()
-    main()
-    end = time.time()
-    print(f"Elapsed running time is: {abs(end-start)}")
+    args = make_parse()
+    main(args)
+    # runtimes = []
+    # for i in range(5):
+    #     run_time = main(args)
+    #     runtimes.append(run_time)
+    # mean = np.mean(runtimes)
+    # std = np.std(runtimes)
+    # print(f"mean is: {mean}, std is: {std} seconds")

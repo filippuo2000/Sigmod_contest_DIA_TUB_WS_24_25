@@ -1,0 +1,17 @@
+[tool.black]
+line-length = 88
+skip-string-normalization = true
+
+[tool.isort]
+profile = "black"
+line_length = 88
+
+[tool.flake8]
+max-line-length = 88
+exclude = ["__pycache__", ".git", ".gitignore"]
+# ignore = ["E203", "W503"]
+
+[tool.pylint]
+max-line-length = 88
+#exclude = ["__pycache__", ".git"]
+# disable = ["C0111", "R0915"]
