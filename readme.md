@@ -4,8 +4,6 @@ This repository contains the implementation for the [SIGMOD Contest 2013](https:
 
 The task was to first implement a basic implementation, which in this case was simply a brute-force solution and then refine the solution to achieve a minimum of 20x speedup on the processing of test .txt files. Speed up was achieved by implementing the publish-subscribe architecture, where a set of words from the active queries are the topics, to which certain queries subscribe. Publisher is then publishing single words from every document that need to be processed. Further speedup has been achieved by implementing the caching mechanism, so that for every document only the unprocessed topics are checked against it. 
 
-So far only the basic implementation without any optimization involved has been designed.
-
 To successfully run the python implementation one should use python 3.12+ and install the Levenshtein package, which is a dependency that provides the implementation of the Edit distance.
 
   ```sh
